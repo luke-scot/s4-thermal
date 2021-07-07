@@ -131,3 +131,5 @@ dmypy.json
 # Extra
 data/*
 plots/*
+s4/*
+.vscode/*
