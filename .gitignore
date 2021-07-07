@@ -133,3 +133,5 @@ data/*
 plots/*
 s4/*
 .vscode/*
+*.jpg
+*.png
