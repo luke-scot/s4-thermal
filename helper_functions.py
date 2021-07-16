@@ -17,12 +17,13 @@ def img_to_arr(filepath, xq=False, yq=False):
         arr = np.dstack((read[0],read[1],read[2]))/255  
     return arr
 
-def downsample_arr(arr, pxSize, resolution):
+# Function downsamples an image input as an array
+def downsample_arr(arr, pxSize, resolution, sampleType=np.mean):
     ds = int(np.floor(resolution/pxSize))
     if len(arr.shape) == 3:       
-        return np.dstack(([block_reduce(arr[:, :, i], (ds, ds), np.mean) for i in range(arr.shape[2])]), axis=-1)
+        return np.dstack(([block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds), i], (ds, ds), sampleType, cval = arr.mean()) for i in range(arr.shape[2])]), axis=-1)
     else: 
-        return block_reduce(arr, (ds, ds), np.mean)
+        return block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds)], (ds, ds), sampleType, cval = arr.mean())
 
 """Stitching functions"""
 
@@ -111,7 +112,7 @@ def make_kml(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat,
     and several simplekml kw..."""
 
     kml = Kml()
-    altitude = kw.pop('altitude', 2e7)
+    altitude = kw.pop('altitude', 2e3)
     roll = kw.pop('roll', 0)
     tilt = kw.pop('tilt', 0)
     altitudemode = kw.pop('altitudemode', AltitudeMode.relativetoground)
