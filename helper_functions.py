@@ -147,7 +147,7 @@ def make_kml(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat,
         screen.overlayxy = OverlayXY(x=0, y=0,
                                      xunits=Units.fraction,
                                      yunits=Units.fraction)
-        screen.screenxy = ScreenXY(x=0.015, y=0.075,
+        screen.screenxy = ScreenXY(x=0.09, y=0.09,
                                    xunits=Units.fraction,
                                    yunits=Units.fraction)
         screen.rotationXY = RotationXY(x=0.5, y=0.5,
