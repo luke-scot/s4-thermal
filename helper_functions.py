@@ -1,10 +1,117 @@
 import numpy as np
+import glob
+import re
 import cv2
 import rasterio as ro
 import matplotlib.pyplot as plt
+from datetime import datetime
+import pandas as pd
+from pyproj import Proj
 from skimage.measure import block_reduce
-from simplekml import (Kml, OverlayXY, ScreenXY, Units, RotationXY,
-                       AltitudeMode, Camera)
+
+#-----------------------------------------------#
+"""Image data assimilation functions"""
+def img_info_merge(imgDir, pathFile, utcDiff, pathColumns, imageType=False):
+    """Function takes image directory and a flight path .csv and merges information for each
+    image according to the file name of the image which denotes a timestamp
+    
+    Input:
+    imgDir - Directory name ending with "/" containing image files
+    pathFile - File to .csv flight path from litchi application
+    utcDiff - Time difference of flight info vs UTC
+    imageType - True if RGB image, False if numpy array type (converted thermal images)
+    
+    Output:
+    merged - Pandas dataframe with entry for every image containing associated flight information
+    """
+    
+    ## Get image dataframe with corresponding properties extracted frpm path file
+    fileTypes = ('.jpg','.png','.tif') if imageType else ('.npy')
+    imgs = [_ for _ in glob.glob(imgDir+'*.*') if _.endswith(fileTypes)]
+    imgs.sort()
+    # Extract date and time from filenames
+    imgdates = [re.search('/20(.+?)_', path).group(1) for path in imgs] # Extract date from filename
+    imgtimes = [re.search('_(.+?)_', path).group(1) for path in imgs] # Extract time from filename
+    # Convert to unix datetime 
+    imgdatetimes = np.array([(datetime.timestamp(datetime(int('20'+imgdates[i][:2]),int(imgdates[i][2:4]),int(imgdates[i][4:6]),int(imgtimes[i][:2])+utcDiff,int(imgtimes[i][2:4]),int(imgtimes[i][4:6])))) for i in range(len(imgs))])*1000
+
+    # Imprt paths and get corresponding timestamps for images
+    pathDf = pd.read_csv(pathFile)
+    
+    # Get nearest GPS timestamp
+    gpstimes = [min(pathDf['timestamp'], key=(lambda list_value : abs(list_value - i))) for i in imgdatetimes]
+    
+    # Create image dataframe
+    imgDf = pd.DataFrame(data=np.array([imgs,gpstimes]).transpose(),columns=['imgPath','timestamp'])
+    imgDf['timestamp'] = imgDf['timestamp'].astype(float)
+
+    # Merge with path dataframe
+    merged = imgDf.merge(pathDf[pathColumns], on='timestamp', how='left')
+    
+    return merged
+
+def filter_imgs(df, properties = [], values = []):
+    """Filters pandas dataframe according to properties and a range of values
+    
+    Input:
+    df - Pandas dataframe
+    properties - Array of column names to be filtered
+    values - Array of tuples containing bounds for each filter
+    
+    Output:
+    df - Filtered dataframe
+    """
+    for i, val in enumerate(properties):
+        df = df.loc[(df[val] > values[i][0]) & (df[val] < values[i][1])]
+    return df
+
+
+def reproject_coords(df, utmZone, hemisphere='north', inverse=False, 
+                     orig=['longitude','latitude'], local=['x','y']):
+    """Reprojects coordinates in dataframe to new column
+    
+    Input:
+    df - Dataframe containg coordinates
+    utmZone - WGS84 UTM zone
+    hemisphere - north or south
+    inverse - False for lat/lon to local, True for local to lat/lon
+    
+    Output:
+    df - Dataframe with new column for coordinates
+    """
+    # Convert coordinates to UTM
+    myProj = Proj('+proj=utm +zone='+utmZone+', +'+hemisphere+' +ellps=WGS84 +datum=WGS84 +units=m +no_defs')
+    if inverse: df[orig[0]], df[orig[1]] = myProj(df[local[0]].values, df[local[1]].values, inverse=True)
+    else: df[local[0]], df[local[1]] = myProj(df[orig[0]].values, df[orig[1]].values)
+    return df, myProj
+  
+def correct_coords(df, distFilt=False, altitude='altitude(m)', yaw='yaw(deg)',
+                   pitch='pitch(deg)', roll='roll(deg)', degs=True,
+                   ins=['x','y'], outs=['xc','yc']):
+    """Converts aerial coordinates to ground coordinates for an image by taking
+    into account pitch and roll of aircraft
+    
+    Input:
+    df - Dataframe containing UTM coordinates
+    distFilt - Filter out rows where distance between ground and aerial coord is over value
+    altitude, yaw, pitch, roll - Dataframe columns for values
+    degs - Values in degrees, False in radians
+    ins, outs - input and output column names
+    
+    Output:
+    df - Dataframe containing columns for converted coordinates
+    """
+    if degs: yaw, pitch, roll = [np.deg2rad(df[i]) for i in [yaw, pitch, roll]]
+    else: yaw, pitch, roll = [df[i] for i in [yaw, pitch, roll]]
+    # Pitch & Roll distances
+    dist, dist2 = df[altitude]*np.tan(pitch), df[altitude]*np.tan(roll)
+    # Correct x and y
+    df[outs[0]], df[outs[1]] = df[ins[0]]+(dist*np.sin(yaw))+(dist2*np.cos(yaw)), df[ins[1]]+(dist*np.cos(yaw))+(dist2*np.sin(yaw))
+    
+    # Apply distance filter if True
+    return df[abs(np.hypot(dist,dist2)) < distFilt] if distFilt else df
+
+  #-------------------------------------------------------#
 
 """Import functions"""
 def img_to_arr(filepath, xq=False, yq=False):
@@ -24,163 +131,22 @@ def downsample_arr(arr, pxSize, resolution, sampleType=np.mean):
         return np.dstack(([block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds), i], (ds, ds), sampleType, cval = arr.mean()) for i in range(arr.shape[2])]), axis=-1)
     else: 
         return block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds)], (ds, ds), sampleType, cval = arr.mean())
-
-"""Stitching functions"""
-
-def detectAndDescribe(image, method=None):
-    """
-    Compute key points and feature descriptors using an specific method
-    """
-    
-    assert method is not None, "You need to define a feature detection method. Values are: 'sift', 'surf'"
-    
-    # detect and extract features from the image
-    if method == 'sift':
-        descriptor = cv2.xfeatures2d.SIFT_create()
-    elif method == 'surf':
-        descriptor = cv2.xfeatures2d.SURF_create()
-    elif method == 'brisk':
-        descriptor = cv2.BRISK_create()
-    elif method == 'orb':
-        descriptor = cv2.ORB_create()
-        
-    # get keypoints and descriptors
-    (kps, features) = descriptor.detectAndCompute(image, None)
-    
-    return (kps, features)
-  
-def createMatcher(method,crossCheck):
-    "Create and return a Matcher Object"
-    
-    if method == 'sift' or method == 'surf':
-        bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=crossCheck)
-    elif method == 'orb' or method == 'brisk':
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=crossCheck)
-    return bf
-
-def matchKeyPointsBF(featuresA, featuresB, method):
-    bf = createMatcher(method, crossCheck=True)
-        
-    # Match descriptors.
-    best_matches = bf.match(featuresA,featuresB)
-    
-    # Sort the features in order of distance.
-    # The points with small distance (more similarity) are ordered first in the vector
-    rawMatches = sorted(best_matches, key = lambda x:x.distance)
-    print("Raw matches (Brute force):", len(rawMatches))
-    return rawMatches
-
-def matchKeyPointsKNN(featuresA, featuresB, ratio, method):
-    bf = createMatcher(method, crossCheck=False)
-    # compute the raw matches and initialize the list of actual matches
-    rawMatches = bf.knnMatch(featuresA, featuresB, 2)
-    print("Raw matches (knn):", len(rawMatches))
-    matches = []
-
-    # loop over the raw matches
-    for m,n in rawMatches:
-        # ensure the distance is within a certain ratio of each
-        # other (i.e. Lowe's ratio test)
-        if m.distance < n.distance * ratio:
-            matches.append(m)
-    return matches
-  
-def getHomography(kpsA, kpsB, featuresA, featuresB, matches, reprojThresh):
-    # convert the keypoints to numpy arrays
-    kpsA = np.float32([kp.pt for kp in kpsA])
-    kpsB = np.float32([kp.pt for kp in kpsB])
-    
-    if len(matches) > 4:
-
-        # construct the two sets of points
-        ptsA = np.float32([kpsA[m.queryIdx] for m in matches])
-        ptsB = np.float32([kpsB[m.trainIdx] for m in matches])
-        
-        # estimate the homography between the sets of points
-        (H, status) = cv2.findHomography(ptsA, ptsB, cv2.RANSAC,
-            reprojThresh)
-
-        return (matches, H, status)
-    else:
-        return None
       
-"""kmz forming functions"""
-
-def make_kml(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat,
-             figs, colorbar=None, **kw):
-    """TODO: LatLon bbox, list of figs, optional colorbar figure,
-    and several simplekml kw..."""
-
-    kml = Kml()
-    altitude = kw.pop('altitude', 2e3)
-    roll = kw.pop('roll', 0)
-    tilt = kw.pop('tilt', 0)
-    altitudemode = kw.pop('altitudemode', AltitudeMode.relativetoground)
-    camera = Camera(latitude=np.mean([urcrnrlat, llcrnrlat]),
-                    longitude=np.mean([urcrnrlon, llcrnrlon]),
-                    altitude=altitude, roll=roll, tilt=tilt,
-                    altitudemode=altitudemode)
-
-    kml.document.camera = camera
-    draworder = 0
-    for fig in figs:  # NOTE: Overlays are limited to the same bbox.
-        draworder += 1
-        ground = kml.newgroundoverlay(name='GroundOverlay')
-        ground.draworder = draworder
-        ground.visibility = kw.pop('visibility', 1)
-        ground.name = kw.pop('name', 'overlay')
-        ground.color = kw.pop('color', '9effffff')
-        ground.atomauthor = kw.pop('author', 'ocefpaf')
-        ground.latlonbox.rotation = kw.pop('rotation', 0)
-        ground.description = kw.pop('description', 'Matplotlib figure')
-        ground.gxaltitudemode = kw.pop('gxaltitudemode',
-                                       'clampToSeaFloor')
-        ground.icon.href = fig
-        ground.latlonbox.east = llcrnrlon
-        ground.latlonbox.south = llcrnrlat
-        ground.latlonbox.north = urcrnrlat
-        ground.latlonbox.west = urcrnrlon
-
-    if colorbar:  # Options for colorbar are hard-coded (to avoid a big mess).
-        screen = kml.newscreenoverlay(name='Legend')
-        screen.icon.href = colorbar
-        screen.overlayxy = OverlayXY(x=0, y=0,
-                                     xunits=Units.fraction,
-                                     yunits=Units.fraction)
-        screen.screenxy = ScreenXY(x=0.09, y=0.09,
-                                   xunits=Units.fraction,
-                                   yunits=Units.fraction)
-        screen.rotationXY = RotationXY(x=0.5, y=0.5,
-                                       xunits=Units.fraction,
-                                       yunits=Units.fraction)
-        screen.size.x = 0
-        screen.size.y = 0
-        screen.size.xunits = Units.fraction
-        screen.size.yunits = Units.fraction
-        screen.visibility = 1
-
-    kmzfile = kw.pop('kmzfile', 'overlay.kmz')
-    kml.savekmz(kmzfile)
-
-def gearth_fig(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat, pixels=1024):
-    """Return a Matplotlib `fig` and `ax` handles for a Google-Earth Image."""
-    aspect = np.cos(np.mean([llcrnrlat, urcrnrlat]) * np.pi/180.0)
-    xsize = np.ptp([urcrnrlon, llcrnrlon]) * aspect
-    ysize = np.ptp([urcrnrlat, llcrnrlat])
-    aspect = ysize / xsize
-
-    if aspect > 1.0:
-        figsize = (10.0 / aspect, 10.0)
-    else:
-        figsize = (10.0, 10.0 * aspect)
-
-    if False:
-        plt.ioff()  # Make `True` to prevent the KML components from poping-up.
-    fig = plt.figure(figsize=figsize,
-                     frameon=False,
-                     dpi=pixels//10)
-    # KML friendly image.  If using basemap try: `fix_aspect=False`.
-    ax = fig.add_axes([0, 0, 1, 1])
-    ax.set_xlim(llcrnrlon, urcrnrlon)
-    ax.set_ylim(llcrnrlat, urcrnrlat)
-    return fig, ax
+def use_centre(useCentre, df, pxSize, path='imgPath'):
+    """Fetch relative coordinates for only using centre of images if this is specified in variables.
+    
+    Input:
+    useCentre - boolean for using centre of images
+    df - dataframe with flight information
+    pxSize - pixel size of images
+    path - column containing image path in df
+    
+    Output:
+    xq, yq - image coordinate delimiters
+    xCoords, yCoords - Coordinates relative to centre of each image for all pixels
+    """
+    arr = img_to_arr(df.iloc[0][path])
+    yCoords, xCoords = [(np.array(range(arr.shape[i]))-(arr.shape[i]/2))*pxSize+pxSize/2 for i in [0,1]]
+    if useCentre: xq, yq = int(np.floor(len(xCoords)/4)), int(np.floor(len(yCoords)/4))
+    else: xq, yq = False, False
+    return xq, yq, xCoords, yCoords
