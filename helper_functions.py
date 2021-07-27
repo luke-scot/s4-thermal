@@ -117,18 +117,18 @@ def correct_coords(df, distFilt=False, altitude='altitude(m)', yaw='yaw(deg)',
 def img_to_arr(filepath, xq=False, yq=False):
     if '.npy' in filepath: 
         arr = np.load(filepath)
-        if xq and yq: arr = arr[yq:3*yq,xq:3*xq]
+        if xq and yq: arr = arr[yq:arr.shape[0]-yq,xq:arr.shape[1]-xq]
     else:
         img = ro.open(filepath)
-        read = img.read()[:, yq:3*yq,xq:3*xq] if xq and yq else img.read()
+        read = img.read()[:, yq:img.shape[0]-yq,xq:img.shape[1]-xq] if xq and yq else img.read()
         arr = np.dstack((read[0],read[1],read[2]))/255  
     return arr
-
+  
 # Function downsamples an image input as an array
 def downsample_arr(arr, pxSize, resolution, sampleType=np.mean):
     ds = int(np.floor(resolution/pxSize))
     if len(arr.shape) == 3:       
-        return np.dstack(([block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds), i], (ds, ds), sampleType, cval = arr.mean()) for i in range(arr.shape[2])]), axis=-1)
+        return np.dstack(([block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds), i], (ds, ds), sampleType, cval = arr.mean()) for i in range(arr.shape[2])]))
     else: 
         return block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds)], (ds, ds), sampleType, cval = arr.mean())
       
