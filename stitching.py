@@ -7,6 +7,7 @@ from tqdm import tqdm
 from scipy.interpolate import griddata
 from skimage.measure import block_reduce
 import helper_functions as hf
+import imageio
 
 """xy stitching"""
 
@@ -133,7 +134,7 @@ def getHomography(kpsA, kpsB, featuresA, featuresB, matches, reprojThresh):
 
 """Stitching stages functions"""
 
-def initialise_vars(idf, start, xq, yq, tmin, tmax, path='imgPath'):
+def initialise_vars(idf, start, xq, yq, tmin, tmax, path='imgPath', tempfiles=['temp0.jpg','temp1.jpg']):
     prev = start
     single = ((hf.img_to_arr(idf.iloc[start][path], xq=xq, yq=yq)-tmin)*255/tmax).astype(np.uint8)
     imageio.imwrite(tempfiles[0],np.dstack((single,single,single)))

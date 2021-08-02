@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import helper_functions as hf
 from collections import Counter
+from scipy import ndimage
 from simplekml import (Kml, OverlayXY, ScreenXY, Units, RotationXY,
                        AltitudeMode, Camera)
 
@@ -115,8 +116,8 @@ def plot_array(fig, ax, arr, extent, cmap='hot', title=False, imageType=False, s
 #--------------------------------------------------#
 """kmz forming functions"""
 
-def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0, tmax=40):
-    fig, ax = pl.gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
+def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0, tmax=40,cmap='hot'):
+    fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
                             urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
                             pixels=pixels)
     if len(arr.shape) > 2: arr = arr.mean(axis=2)
@@ -139,7 +140,7 @@ def plot_kml_legend(cs, name, label='Temperature ($^{\circ}$C)'):
 def plot_kml_path(df, conv, name, pixels, bounds=False):
     if bounds is not False: x, y = df.longitude[bounds[0]:bounds[1]], df.latitude[bounds[0]:bounds[1]]
     else: x,y = df.longitude, df.latitude
-    fig, ax = pl.gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
+    fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
                              urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
                              pixels=pixels)
     ax.plot(x,y,'k-',linewidth=2,label='raw')
