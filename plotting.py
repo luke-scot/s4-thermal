@@ -115,6 +115,38 @@ def plot_array(fig, ax, arr, extent, cmap='hot', title=False, imageType=False, s
 #--------------------------------------------------#
 """kmz forming functions"""
 
+def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0, tmax=40):
+    fig, ax = pl.gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
+                            urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
+                            pixels=pixels)
+    if len(arr.shape) > 2: arr = arr.mean(axis=2)
+    if rot is not False: arr = np.ma.masked_where(ndimage.rotate(arr, rot)<(1e-2), ndimage.rotate(arr, rot))
+    single =  arr if temp else np.ma.masked_where(arr/255*tmax+tmin < tmin+5, arr/255*tmax+tmin)
+    if scale is False: scale = single
+    cs = ax.imshow(single,extent=(conv[0].min(),conv[0].max(),conv[1].min(),conv[1].max()), cmap=cmap, vmin=scale.min(),vmax=scale.max())
+    ax.set_axis_off()
+    fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
+    return cs, single
+    
+def plot_kml_legend(cs, name, label='Temperature ($^{\circ}$C)'):
+    fig = plt.figure(figsize=(1.0, 4.0))
+    ax = fig.add_axes([0.07, 0.05, 0.27, 0.9])
+    cb = fig.colorbar(cs, cax=ax)
+    cb.set_label(label, rotation=-90, color='k', labelpad=20, fontsize=13)
+    fig.tight_layout()
+    fig.savefig(name+'.png', format='png', bbox_inches = 'tight', pad_inches = 0.2)
+    
+def plot_kml_path(df, conv, name, pixels, bounds=False):
+    if bounds is not False: x, y = df.longitude[bounds[0]:bounds[1]], df.latitude[bounds[0]:bounds[1]]
+    else: x,y = df.longitude, df.latitude
+    fig, ax = pl.gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
+                             urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
+                             pixels=pixels)
+    ax.plot(x,y,'k-',linewidth=2,label='raw')
+    ax.set_axis_off()
+    fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
+
+    
 def make_kml(conv, figs, colorbar=None, **kw):
     """TODO: LatLon bbox, list of figs, optional colorbar figure,
     and several simplekml kw..."""
