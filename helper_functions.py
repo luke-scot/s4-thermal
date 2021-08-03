@@ -11,7 +11,7 @@ from skimage.measure import block_reduce
 
 #-----------------------------------------------#
 """Image data assimilation functions"""
-def img_info_merge(imgDir, pathFile, utcDiff, pathColumns, imageType=False):
+def img_info_merge(imgDir, pathFile, utcDiff, pathColumns, imageType=False, corr=True):
     """Function takes image directory and a flight path .csv and merges information for each
     image according to the file name of the image which denotes a timestamp
     
@@ -37,9 +37,11 @@ def img_info_merge(imgDir, pathFile, utcDiff, pathColumns, imageType=False):
 
     # Imprt paths and get corresponding timestamps for images
     pathDf = pd.read_csv(pathFile)
+    if corr is True: corr = pathDf[pathDf['isflying']==1].iloc[-1].timestamp-imgdatetimes[-1]
+    elif corr is False: corr=0
     
     # Get nearest GPS timestamp
-    gpstimes = [min(pathDf['timestamp'], key=(lambda list_value : abs(list_value - i))) for i in imgdatetimes]
+    gpstimes = [min(pathDf['timestamp'], key=(lambda list_value : abs(list_value - i))) for i in imgdatetimes+corr]
     
     # Create image dataframe
     imgDf = pd.DataFrame(data=np.array([imgs,gpstimes]).transpose(),columns=['imgPath','timestamp'])

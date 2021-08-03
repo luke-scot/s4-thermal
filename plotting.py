@@ -116,15 +116,15 @@ def plot_array(fig, ax, arr, extent, cmap='hot', title=False, imageType=False, s
 #--------------------------------------------------#
 """kmz forming functions"""
 
-def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0, tmax=40,cmap='hot'):
+def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0, tmax=40,cmap='hot', add_temp=0, filt=1):
     fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
                             urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
                             pixels=pixels)
     if len(arr.shape) > 2: arr = arr.mean(axis=2)
     if rot is not False: arr = np.ma.masked_where(ndimage.rotate(arr, rot)<(1e-2), ndimage.rotate(arr, rot))
-    single =  arr if temp else np.ma.masked_where(arr/255*tmax+tmin < tmin+5, arr/255*tmax+tmin)
-    if scale is False: scale = single
-    cs = ax.imshow(single,extent=(conv[0].min(),conv[0].max(),conv[1].min(),conv[1].max()), cmap=cmap, vmin=scale.min(),vmax=scale.max())
+    single =  arr if temp else np.ma.masked_where(arr/255*tmax+tmin < tmin+filt, arr/255*tmax+tmin)
+    if scale is False: scale = single+add_temp
+    cs = ax.imshow(single+add_temp,extent=(conv[0].min(),conv[0].max(),conv[1].min(),conv[1].max()), cmap=cmap, vmin=scale.min(),vmax=scale.max())
     ax.set_axis_off()
     fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
     return cs, single
@@ -147,6 +147,14 @@ def plot_kml_path(df, conv, name, pixels, bounds=False):
     ax.set_axis_off()
     fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
 
+def plot_kml_polygon(polygon, conv, name, pixels, bounds=False):
+    fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
+                             urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
+                             pixels=pixels)
+    for bdy in polygon.boundary:
+        ax.plot(bdy.xy[0],bdy.xy[1],'k-',linewidth=4,label='Building contour')
+    ax.set_axis_off()
+    fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
     
 def make_kml(conv, figs, colorbar=None, **kw):
     """TODO: LatLon bbox, list of figs, optional colorbar figure,
