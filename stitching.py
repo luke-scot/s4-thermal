@@ -193,6 +193,12 @@ def stitch_img_result(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg, prev
         return totalBox, prevNum, prevImg, prevBox
     if verbose: print('Filt. matches: '+str(len(mam))+', stdev: ' + str(round(np.std(mam-mbm, axis=0).mean(),2)))
     
+    # If many matches but too many outliers - take half around medians
+    if len(mam) > min_matches and np.std(mam-mbm, axis=0).mean() > max_stdev:
+        vals = np.mean(np.abs((mam-mbm)-np.median(mam-mbm,axis=0)),axis=1).argsort()[:int(len(mam)/2)]
+        mam, mbm = mam[vals], mbm[vals]
+        print('Removed outliers')
+    
     # Filter for conditions
     if len(mam) > min_matches and np.std(mam-mbm, axis=0).mean() < max_stdev:
         # New box position before adjustment for expanding total box
