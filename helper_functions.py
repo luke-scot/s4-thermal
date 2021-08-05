@@ -10,7 +10,6 @@ from pyproj import Proj
 from skimage.measure import block_reduce
 
 #-----------------------------------------------#
-"""Image data assimilation functions"""
 def img_info_merge(imgDir, pathFile, utcDiff, pathColumns, imageType=False, corr=True):
     """Function takes image directory and a flight path .csv and merges information for each
     image according to the file name of the image which denotes a timestamp
@@ -31,10 +30,10 @@ def img_info_merge(imgDir, pathFile, utcDiff, pathColumns, imageType=False, corr
     imgs.sort()
     # Extract date and time from filenames
     imgdates = [re.search('/20(.+?)_', path).group(1) for path in imgs] # Extract date from filename
-    imgtimes = [re.search('_(.+?)_', path).group(1) for path in imgs] # Extract time from filename
+    imgtimes = [re.search(imgdates[i]+'_(.+?)_', imgs[i]).group(1) for i in range(len(imgs))] # Extract time from filename
     # Convert to unix datetime 
     imgdatetimes = np.array([(datetime.timestamp(datetime(int('20'+imgdates[i][:2]),int(imgdates[i][2:4]),int(imgdates[i][4:6]),int(imgtimes[i][:2])+utcDiff,int(imgtimes[i][2:4]),int(imgtimes[i][4:6])))) for i in range(len(imgs))])*1000
-
+    
     # Imprt paths and get corresponding timestamps for images
     pathDf = pd.read_csv(pathFile)
     if corr is True: corr = pathDf[pathDf['isflying']==1].iloc[-1].timestamp-imgdatetimes[-1]
