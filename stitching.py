@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-import rasterio as ro
+#import rasterio as ro
 import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm

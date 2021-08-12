@@ -116,10 +116,10 @@ def plot_array(fig, ax, arr, extent, cmap='hot', title=False, imageType=False, s
 #--------------------------------------------------#
 """kmz forming functions"""
 
-def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0, tmax=40,cmap='hot', add_temp=0, filt=1):
+def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0, tmax=40,cmap='hot', add_temp=0, filt=1, hide_plot=False):
     fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
                             urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
-                            pixels=pixels)
+                            pixels=pixels, hide_plot=hide_plot)
     if len(arr.shape) > 2: arr = arr.mean(axis=2)
     if rot is not False: arr = np.ma.masked_where(ndimage.rotate(arr, rot)<(1e-2), ndimage.rotate(arr, rot))
     single =  arr if temp else np.ma.masked_where(arr/255*tmax+tmin < tmin+filt, arr/255*tmax+tmin)
@@ -127,6 +127,7 @@ def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0,
     cs = ax.imshow(single+add_temp,extent=(conv[0].min(),conv[0].max(),conv[1].min(),conv[1].max()), cmap=cmap, vmin=scale.min(),vmax=scale.max())
     ax.set_axis_off()
     fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
+    if hide_plot: plt.close(fig)
     return cs, single
     
 def plot_kml_legend(cs, name, label='Temperature ($^{\circ}$C)'):
@@ -220,16 +221,12 @@ def gearth_fig(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat, pixels=1024, hide_plo
     ysize = np.ptp([urcrnrlat, llcrnrlat])
     aspect = ysize / xsize
 
-    if aspect > 1.0:
-        figsize = (10.0 / aspect, 10.0)
-    else:
-        figsize = (10.0, 10.0 * aspect)
+    if aspect > 1.0: figsize = (10.0 / aspect, 10.0)
+    else: figsize = (10.0, 10.0 * aspect)
 
     if hide_plot:
         plt.ioff()  # Make `True` to prevent the KML components from poping-up.
-    fig = plt.figure(figsize=figsize,
-                     frameon=False,
-                     dpi=pixels//10)
+    fig = plt.figure(figsize=figsize, frameon=False, dpi=pixels//10)
     # KML friendly image.  If using basemap try: `fix_aspect=False`.
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(llcrnrlon, urcrnrlon)

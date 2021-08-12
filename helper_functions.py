@@ -2,7 +2,8 @@ import numpy as np
 import glob
 import re
 import cv2
-import rasterio as ro
+import imageio
+#import rasterio as ro
 import matplotlib.pyplot as plt
 from datetime import datetime
 import pandas as pd
@@ -29,6 +30,7 @@ def img_info_merge(imgDir, pathFile, utcDiff, pathColumns, imageType=False, corr
     imgs = [_ for _ in glob.glob(imgDir+'*.*') if _.endswith(fileTypes)]
     imgs.sort()
     # Extract date and time from filenames
+    imgs = [i.replace('\\','/') for i in imgs]
     imgdates = [re.search('/20(.+?)_', path).group(1) for path in imgs] # Extract date from filename
     imgtimes = [re.search(imgdates[i]+'_(.+?)_', imgs[i]).group(1) for i in range(len(imgs))] # Extract time from filename
     # Convert to unix datetime 
@@ -120,7 +122,8 @@ def img_to_arr(filepath, xq=False, yq=False):
         arr = np.load(filepath)
         if xq and yq: arr = arr[yq:arr.shape[0]-yq,xq:arr.shape[1]-xq]
     else:
-        img = ro.open(filepath)
+        img = imageio.imread(filepath)
+        #img = ro.open(filepath)
         read = img.read()[:, yq:img.shape[0]-yq,xq:img.shape[1]-xq] if xq and yq else img.read()
         arr = np.dstack((read[0],read[1],read[2]))/255  
     return arr
