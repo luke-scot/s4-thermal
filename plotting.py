@@ -213,7 +213,7 @@ def make_kml(conv, figs, colorbar=None, **kw):
     kmzfile = kw.pop('kmzfile', 'overlay.kmz')
     kml.savekmz(kmzfile)
 
-def gearth_fig(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat, pixels=1024):
+def gearth_fig(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat, pixels=1024, hide_plot=False):
     """Return a Matplotlib `fig` and `ax` handles for a Google-Earth Image."""
     aspect = np.cos(np.mean([llcrnrlat, urcrnrlat]) * np.pi/180.0)
     xsize = np.ptp([urcrnrlon, llcrnrlon]) * aspect
@@ -225,7 +225,7 @@ def gearth_fig(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat, pixels=1024):
     else:
         figsize = (10.0, 10.0 * aspect)
 
-    if False:
+    if hide_plot:
         plt.ioff()  # Make `True` to prevent the KML components from poping-up.
     fig = plt.figure(figsize=figsize,
                      frameon=False,
