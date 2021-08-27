@@ -1,14 +1,16 @@
-import numpy as np
 import cv2
-#import rasterio as ro
-import matplotlib.pyplot as plt
+import imageio
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import helper_functions as hf
+import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 from skimage.measure import block_reduce
-import helper_functions as hf
-import imageio
 
+"""File with all stitiching functions used for drone images"""
+
+#------------------------------------------------#
 """xy stitching"""
 
 def img_xymerge(df, xCoords, yCoords, xq, yq, pxSize,
@@ -51,15 +53,13 @@ def img_xymerge(df, xCoords, yCoords, xq, yq, pxSize,
   
 #--------------------------------------#
 
-"""Stitching functions"""
+"""RANSAC algorithm functions"""
 
 def detectAndDescribe(image, method=None):
     """
     Compute key points and feature descriptors using an specific method
     """
-    
     assert method is not None, "You need to define a feature detection method. Values are: 'sift', 'surf'"
-    
     # detect and extract features from the image
     if method == 'sift':
         descriptor = cv2.xfeatures2d.SIFT_create()
@@ -186,128 +186,64 @@ def filter_img_translation(ma, mb, df, num1, num2, movDef=2, x='xc', y='yc'):
     
     return mam, mbm, diff
 
-def stitch_img_result(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg, prevNum, imgNum,
-                      min_matches=4, max_stdev=20, tmin=-10, tmax=40, verbose=True, queryImg=False):
-    if diff is None: 
-        print('Images {} and {}, no matches'.format(str(prevNum),str(imgNum)))
-        return totalBox, prevNum, prevImg, prevBox
-    if verbose: print('Filt. matches: '+str(len(mam))+', stdev: ' + str(round(np.std(mam-mbm, axis=0).mean(),2)))
-    
-    # If many matches but too many outliers - take half around medians
-    if len(mam) > min_matches and np.std(mam-mbm, axis=0).mean() > max_stdev:
-        vals = np.mean(np.abs((mam-mbm)-np.median(mam-mbm,axis=0)),axis=1).argsort()[:int(len(mam)-5)]
-        mam, mbm = mam[vals], mbm[vals]
-        print('Removed outliers')
-    
-    # Filter for conditions
-    if len(mam) > min_matches and np.std(mam-mbm, axis=0).mean() < max_stdev:
-        # New box position before adjustment for expanding total box
-        newBox=[int(np.round(prevBox[0]+diff[1])), int(np.round(prevBox[1]+diff[1])), int(np.round(prevBox[2]+diff[0])),int(np.round(prevBox[3]+diff[0]))] 
-        pos = [0,0] # Position for previously merged images
-        modBox = [0,0,0,0] # Position for new image
-        
-        # If bounds on axis 0 go beyond total
-        if newBox[0]<0:
-            xmin = imgNum
-            modBox[1], modBox[0], pos[0] = newBox[1]-newBox[0], 0, abs(newBox[0])
-            totalBox[0]+=abs(newBox[0])
-        elif newBox[1] > totalBox[0]:
-            xmax = imgNum
-            modBox[1], modBox[0], pos[0] = newBox[1], newBox[0], 0
-            totalBox[0]=newBox[1]
-        else: modBox[0], modBox[1], pos[0] = newBox[0], newBox[1], 0
-            
-        # If bounds on axis 1 go beyond total
-        if newBox[2]<0:
-            ymin = imgNum
-            modBox[3], modBox[2], pos[1] = newBox[3]-newBox[2], 0, abs(newBox[2])
-            totalBox[1]+=abs(newBox[2])
-        elif newBox[3] > totalBox[1]:
-            ymax = imgNum
-            modBox[3], modBox[2], pos[1] = newBox[3], newBox[2], 0
-            totalBox[1] = newBox[3]
-        else: modBox[2], modBox[3], pos[1] = newBox[2], newBox[3], 0    
-        prevBox = modBox  
-        
-        if queryImg is False:
-            single = ((img_arrs[1]-tmin)*255/tmax).astype(np.uint8)
-            queryImg = np.dstack((single,single,single))
-        result = np.zeros([totalBox[0],totalBox[1],3])
-        result[pos[0]:pos[0]+prevImg.shape[0],pos[1]:pos[1]+prevImg.shape[1],:] = prevImg
-        result[modBox[0]:modBox[1], modBox[2]:modBox[3],:] = queryImg
-        print('Images {} and {} merged.'.format(str(prevNum),str(imgNum)))
-        prevNum, prevImg = imgNum, result
-    else: print('Images {} and {}, poor matching'.format(str(prevNum),str(imgNum)))
-    return totalBox, prevNum, prevImg, prevBox
+def stitch_img_result(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg, prevNum, imgNum, min_matches=4, max_stdev=20, tmin=-10, tmax=40, verbose=True, queryImg=False):
+  """Stitch individual images together"""
   
-#         if len(img_arrs[1].shape) == 2:
-#             single = (img_arrs[1]-tmin)*255/tmax
-#             queryImg = np.dstack((single,single,single)).astype(np.uint8)
-#         else: queryImg = rgb_query  
+  if diff is None: 
+      print('Images {} and {}, no matches'.format(str(prevNum),str(imgNum)))
+      return totalBox, prevNum, prevImg, prevBox
+  if verbose: print('Filt. matches: '+str(len(mam))+', stdev: ' + str(round(np.std(mam-mbm, axis=0).mean(),2)))
 
-# def stitch_img_result_pano(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg, prevNum, imgNum,
-#                            min_matches=4, max_stdev=20, tmin=-10, tmax=40, verbose=True, rgb_query=False,inv=False):
-#     if verbose: print('Filt. matches: '+str(len(mam))+', stdev: ' + str(round(np.std(mam-mbm, axis=0).mean(),2)))
-#     # Filter for conditions
-#     if len(mam) > min_matches and np.std(mam-mbm, axis=0).mean() < max_stdev:
-#         # New box position before adjustment for expanding total box
-#         if rgb_query is not False:
-#             newBox=[int(np.round(prevBox[0]+diff[1])), int(np.round(prevBox[0]+diff[1]))+rgb_query.shape[0], int(np.round(prevBox[2]+diff[0])),int(np.round(prevBox[2]+diff[0]))+rgb_query.shape[1]] 
-#         else: newBox=[int(np.round(prevBox[0]+diff[1])), int(np.round(prevBox[1]+diff[1])), int(np.round(prevBox[2]+diff[0])),int(np.round(prevBox[3]+diff[0]))] 
-#         pos = [0,0] # Position for previously merged images
-#         modBox = [0,0,0,0] # Position for new image
-#         # If bounds on axis 0 go beyond total
-#         if newBox[0]<0 and newBox[1] > totalBox[0]:
-#             xmin = imgNum
-#             xmax = imgNum
-#             modBox[1], modBox[0], pos[0] = newBox[1]-newBox[0], 0, abs(newBox[0])
-#             totalBox[0]=newBox[1]-min(newBox[0],0)
-#         elif newBox[0]<0:
-#             xmin = imgNum
-#             modBox[1], modBox[0], pos[0] = newBox[1]-newBox[0], 0, abs(newBox[0])
-#             totalBox[0]+=abs(newBox[0])
-#         elif newBox[1] > totalBox[0]:
-#             xmax = imgNum
-#             modBox[1], modBox[0], pos[0] = newBox[1], newBox[0], 0
-#             totalBox[0]=newBox[1]
-#         else: modBox[0], modBox[1], pos[0] = newBox[0], newBox[1], 0#newBox[0]>0 and newBox[1] < totalBox[0]:
-                 
-#         # If bounds on axis 1 go beyond total
-#         if newBox[2]<0:
-#             ymin = imgNum
-#             modBox[3], modBox[2], pos[1] = newBox[3]-newBox[2], 0, abs(newBox[2])
-#             totalBox[1]+=abs(newBox[2])
-#         if newBox[3] > totalBox[1]:
-#             ymax = imgNum
-#             modBox[3], modBox[2], pos[1] = newBox[3], newBox[2], 0
-#             totalBox[1] = newBox[3]-min(newBox[2],0)
-#         if newBox[2]>0 and newBox[3] < totalBox[1]:
-#             modBox[2], modBox[3], pos[1] = newBox[2], newBox[3], 0 
-#         prevBox = modBox 
-        
-#         if len(img_arrs[1].shape) == 2:
-#             single = (img_arrs[1]-tmin)*255/tmax
-#             queryImg = np.dstack((single,single,single)).astype(np.uint8)
-#         else: queryImg = rgb_query
-#         result = np.zeros([totalBox[0],totalBox[1],3])
-#         if inv:
-#             result[modBox[0]:modBox[1], modBox[2]:modBox[3],:] = queryImg
-#             prevImg.data[modBox[0]:modBox[1], modBox[2]:modBox[3],:] += np.array(queryImg[0:prevImg.shape[0]-modBox[0],:prevImg.shape[1]-modBox[2],:]*(prevImg.mask[modBox[0]:modBox[1], modBox[2]:modBox[3],:]))
-#             result[pos[0]:pos[0]+prevImg.shape[0],pos[1]:pos[1]+prevImg.shape[1],:] = prevImg   
-#         else:    
-#             result[pos[0]:pos[0]+prevImg.shape[0],pos[1]:pos[1]+prevImg.shape[1],:] = prevImg
-#             print(modBox)
-#             print((prevImg[modBox[0]:modBox[1], modBox[2]:modBox[3],:]).shape)
-#             print((queryImg.mask[-min(modBox[0],0):min(modBox[1],prevImg.shape[0])-max(modBox[0],0), -min(modBox[2],0):min(modBox[3],prevImg.shape[1])-max(modBox[2],0)]).shape)
-#             queryImg.data[-min(modBox[0],0):min(modBox[1],prevImg.shape[0])-max(modBox[0],0), -min(modBox[2],0):min(modBox[3],prevImg.shape[1])-max(modBox[2],0)] += np.array(prevImg[modBox[0]:modBox[1], modBox[2]:modBox[3],:]*(queryImg.mask[-min(modBox[0],0):min(modBox[1],prevImg.shape[0])-max(modBox[0],0), -min(modBox[2],0):min(modBox[3],prevImg.shape[1])-max(modBox[2],0)]))
-#             result[modBox[0]:modBox[1], modBox[2]:modBox[3],:] = queryImg
-#         print('Images {} and {} merged.'.format(str(prevNum),str(imgNum)))
-#         prevNum, prevImg = imgNum, result
-#     else: print('Images {} and {}, poor matching'.format(str(prevNum),str(imgNum)))
-#     return totalBox, prevNum, prevImg, prevBox
+  # If many matches but too many outliers - take half around medians
+  if len(mam) > min_matches and np.std(mam-mbm, axis=0).mean() > max_stdev:
+      vals = np.mean(np.abs((mam-mbm)-np.median(mam-mbm,axis=0)),axis=1).argsort()[:int(len(mam)-5)]
+      mam, mbm = mam[vals], mbm[vals]
+      print('Removed outliers')
+
+  # Filter for conditions
+  if len(mam) > min_matches and np.std(mam-mbm, axis=0).mean() < max_stdev:
+      # New box position before adjustment for expanding total box
+      newBox=[int(np.round(prevBox[0]+diff[1])), int(np.round(prevBox[1]+diff[1])), int(np.round(prevBox[2]+diff[0])),int(np.round(prevBox[3]+diff[0]))] 
+      pos = [0,0] # Position for previously merged images
+      modBox = [0,0,0,0] # Position for new image
+
+      # If bounds on axis 0 go beyond total
+      if newBox[0]<0:
+          xmin = imgNum
+          modBox[1], modBox[0], pos[0] = newBox[1]-newBox[0], 0, abs(newBox[0])
+          totalBox[0]+=abs(newBox[0])
+      elif newBox[1] > totalBox[0]:
+          xmax = imgNum
+          modBox[1], modBox[0], pos[0] = newBox[1], newBox[0], 0
+          totalBox[0]=newBox[1]
+      else: modBox[0], modBox[1], pos[0] = newBox[0], newBox[1], 0
+
+      # If bounds on axis 1 go beyond total
+      if newBox[2]<0:
+          ymin = imgNum
+          modBox[3], modBox[2], pos[1] = newBox[3]-newBox[2], 0, abs(newBox[2])
+          totalBox[1]+=abs(newBox[2])
+      elif newBox[3] > totalBox[1]:
+          ymax = imgNum
+          modBox[3], modBox[2], pos[1] = newBox[3], newBox[2], 0
+          totalBox[1] = newBox[3]
+      else: modBox[2], modBox[3], pos[1] = newBox[2], newBox[3], 0    
+      prevBox = modBox  
+
+      if queryImg is False:
+          single = ((img_arrs[1]-tmin)*255/tmax).astype(np.uint8)
+          queryImg = np.dstack((single,single,single))
+      result = np.zeros([totalBox[0],totalBox[1],3])
+      result[pos[0]:pos[0]+prevImg.shape[0],pos[1]:pos[1]+prevImg.shape[1],:] = prevImg
+      result[modBox[0]:modBox[1], modBox[2]:modBox[3],:] = queryImg
+      print('Images {} and {} merged.'.format(str(prevNum),str(imgNum)))
+      prevNum, prevImg = imgNum, result
+  else: print('Images {} and {}, poor matching'.format(str(prevNum),str(imgNum)))
+  return totalBox, prevNum, prevImg, prevBox
   
-def stitch_img_result_pano(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg, prevNum, imgNum,
-                           min_matches=4, max_stdev=20, tmin=-10, tmax=40, verbose=True, rgb_query=False,inv=False):
+def stitch_img_result_pano(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg, prevNum, imgNum, min_matches=4, max_stdev=20, tmin=-10, tmax=40, verbose=True, rgb_query=False,inv=False):
+  """Stitch strips of images together according to matching points"""
+  
     if verbose: print('Filt. matches: '+str(len(mam))+', stdev: ' + str(round(np.std(mam-mbm, axis=0).mean(),2)))
     # Filter for conditions
     if len(mam) > min_matches and np.std(mam-mbm, axis=0).mean() < max_stdev:
@@ -330,13 +266,13 @@ def stitch_img_result_pano(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg,
             xmax = imgNum
             modBox[1], modBox[0] = newBox[1], newBox[0]
             totalBox[0]=newBox[1]
-        else: modBox[0], modBox[1] = newBox[0], newBox[1]
+        else: modBox[0], modBox[1] = newBox[0], newBox[1] 
                  
         # If bounds on axis 1 go beyond total
         if newBox[2]<0 and newBox[3] > totalBox[1]:
             ymin, ymax = imgNum, imgNum
             modBox[3], modBox[2], pos[1] = newBox[3]-newBox[2], 0, abs(newBox[2])
-            totalBox[2]=newBox[3]-min(newBox[2],0)
+            totalBox[1]=newBox[3]-min(newBox[2],0)
         elif newBox[2]<0:
             ymin = imgNum
             modBox[3], modBox[2], pos[1] = newBox[3]-newBox[2], 0, abs(newBox[2])
@@ -344,9 +280,10 @@ def stitch_img_result_pano(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg,
         elif newBox[3] > totalBox[1]:
             ymax = imgNum
             modBox[3], modBox[2] = newBox[3], newBox[2]
-            totalBox[1] = newBox[3]
+            totalBox[1] = newBox[3] #-min(newBox[2],0)
         else: modBox[2], modBox[3] = newBox[2], newBox[3]
         prevBox = modBox 
+        print(modBox)
         
         if len(img_arrs[1].shape) == 2:
             single = (img_arrs[1]-tmin)*255/tmax
@@ -355,11 +292,13 @@ def stitch_img_result_pano(mam, mbm, diff, totalBox, prevBox, img_arrs, prevImg,
         result = np.zeros([totalBox[0],totalBox[1],3])
         if inv:
             result[modBox[0]:modBox[1], modBox[2]:modBox[3],:] = queryImg
+            #prevImg.data[max(0,newBox[0]):min(newBox[1],prevImg.shape[0]), max(0,newBox[2]):min(newBox[3],prevImg.shape[1]),:] += np.array(queryImg[max(0,-newBox[0]):min(queryImg.shape[0],prevImg.shape[0]-max(newBox[0],0)), max(0,-newBox[2]):min(queryImg.shape[1],prevImg.shape[1]+max(-newBox[2],0)),:]*(prevImg.mask[max(0,newBox[0]):min(newBox[1],prevImg.shape[0]), max(0,newBox[2]):min(newBox[3],prevImg.shape[1]),:]))
             prevImg.data[max(newBox[0],0):min(newBox[1],prevImg.shape[0]), max(newBox[2],0):min(newBox[3],prevImg.shape[1]),:] += np.array(queryImg[-min(newBox[0],0):min(queryImg.shape[0],prevImg.shape[0]-newBox[0]), -min(newBox[2],0):min(queryImg.shape[1],prevImg.shape[1]-newBox[2]),:]*prevImg.mask[max(newBox[0],0):min(newBox[1],prevImg.shape[0]), max(newBox[2],0):min(newBox[3],prevImg.shape[1]),:])
             result[pos[0]:pos[0]+prevImg.shape[0],pos[1]:pos[1]+prevImg.shape[1],:] = prevImg   
         else:    
             result[pos[0]:pos[0]+prevImg.shape[0],pos[1]:pos[1]+prevImg.shape[1],:] = prevImg
-            queryImg.data[-min(newBox[0],0):min(queryImg.shape[0],prevImg.shape[0]-newBox[0]), -min(newBox[2],0):min(queryImg.shape[1],prevImg.shape[1]-newBox[2]),:] += np.array(prevImg[max(newBox[0],0):min(newBox[1],prevImg.shape[0]), max(newBox[2],0):min(newBox[3],prevImg.shape[1]),:]*(queryImg.mask[-min(newBox[0],0):min(queryImg.shape[0],prevImg.shape[0]-newBox[0]), -min(newBox[2],0):min(queryImg.shape[1],prevImg.shape[1]-newBox[2]),:]))
+            print(-min(newBox[0],0),min(queryImg.shape[0],prevImg.shape[0]-newBox[0]), -min(newBox[2],0),min(queryImg.shape[1],prevImg.shape[1]-newBox[2]))
+            queryImg.data[-min(newBox[0],0):min(queryImg.shape[0],prevImg.shape[0]-newBox[0]), -min(newBox[2],0):min(queryImg.shape[1],prevImg.shape[1]-newBox[2])] += np.array(prevImg[max(0,newBox[0]):min(prevImg.shape[0],newBox[1]), max(0,newBox[2]):min(prevImg.shape[1],newBox[3]),:]*(queryImg.mask[-min(newBox[0],0):min(queryImg.shape[0],prevImg.shape[0]-newBox[0]), -min(newBox[2],0):min(queryImg.shape[1],prevImg.shape[1]-newBox[2])]))
             result[modBox[0]:modBox[1], modBox[2]:modBox[3],:] = queryImg
         print('Images {} and {} merged.'.format(str(prevNum),str(imgNum)))
         prevNum, prevImg = imgNum, result

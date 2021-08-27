@@ -1,11 +1,13 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import helper_functions as hf
-from collections import Counter
+import matplotlib.pyplot as plt
 from scipy import ndimage
+from collections import Counter
 from simplekml import (Kml, OverlayXY, ScreenXY, Units, RotationXY,
                        AltitudeMode, Camera)
+
+"""This file contains functions for plots throughout the stitching process"""
 
 #--------------------------------------------#
 """Matplotlib plotting functions"""
@@ -117,50 +119,52 @@ def plot_array(fig, ax, arr, extent, cmap='hot', title=False, imageType=False, s
 """kmz forming functions"""
 
 def plot_kml(arr, conv, name, pixels, rot=False, scale=False, temp=True, tmin=0, tmax=40,cmap='hot', add_temp=0, filt=1, hide_plot=False):
-    fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
-                            urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
-                            pixels=pixels, hide_plot=hide_plot)
-    if len(arr.shape) > 2: arr = arr.mean(axis=2)
-    if rot is not False: arr = np.ma.masked_where(ndimage.rotate(arr, rot)<(1e-2), ndimage.rotate(arr, rot))
-    single =  arr if temp else np.ma.masked_where(arr/255*tmax+tmin < tmin+filt, arr/255*tmax+tmin)
-    if scale is False: scale = single+add_temp
-    cs = ax.imshow(single+add_temp,extent=(conv[0].min(),conv[0].max(),conv[1].min(),conv[1].max()), cmap=cmap, vmin=scale.min(),vmax=scale.max())
-    ax.set_axis_off()
-    fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
-    if hide_plot: plt.close(fig)
-    return cs, single
+  """Plots kml compatible .png from image array input"""
+  fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
+                       urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
+                       pixels=pixels, hide_plot=hide_plot)
+  if len(arr.shape) > 2: arr = arr.mean(axis=2)
+  if rot is not False: arr = np.ma.masked_where(ndimage.rotate(arr, rot)<(1e-2), ndimage.rotate(arr, rot))
+  single = arr if temp else np.ma.masked_where(arr/255*tmax+tmin < tmin+filt, arr/255*tmax+tmin)
+  if scale is False: scale = single+add_temp
+  cs = ax.imshow(single+add_temp,extent=(conv[0].min(),conv[0].max(),conv[1].min(),conv[1].max()), cmap=cmap, vmin=scale.min(),vmax=scale.max())
+  ax.set_axis_off()
+  fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
+  if hide_plot: plt.close(fig)
+  return cs, single
     
 def plot_kml_legend(cs, name, label='Temperature ($^{\circ}$C)'):
-    fig = plt.figure(figsize=(1.0, 4.0))
-    ax = fig.add_axes([0.07, 0.05, 0.27, 0.9])
-    cb = fig.colorbar(cs, cax=ax)
-    cb.set_label(label, rotation=-90, color='k', labelpad=20, fontsize=13)
-    fig.tight_layout()
-    fig.savefig(name+'.png', format='png', bbox_inches = 'tight', pad_inches = 0.2)
+  "Creates legend for .kmz file from input kml plot"
+  fig = plt.figure(figsize=(1.0, 4.0))
+  ax = fig.add_axes([0.07, 0.05, 0.27, 0.9])
+  cb = fig.colorbar(cs, cax=ax)
+  cb.set_label(label, rotation=-90, color='k', labelpad=20, fontsize=13)
+  fig.tight_layout()
+  fig.savefig(name+'.png', format='png', bbox_inches = 'tight', pad_inches = 0.2)
     
 def plot_kml_path(df, conv, name, pixels, bounds=False):
-    if bounds is not False: x, y = df.longitude[bounds[0]:bounds[1]], df.latitude[bounds[0]:bounds[1]]
-    else: x,y = df.longitude, df.latitude
-    fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
-                             urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
-                             pixels=pixels)
-    ax.plot(x,y,'k-',linewidth=2,label='raw')
-    ax.set_axis_off()
-    fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
+  """Creates flight path layer for .kmz"""
+  if bounds is not False: x, y = df.longitude[bounds[0]:bounds[1]], df.latitude[bounds[0]:bounds[1]]
+  else: x,y = df.longitude, df.latitude
+  fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
+                           urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
+                           pixels=pixels)
+  ax.plot(x,y,'k-',linewidth=2,label='raw')
+  ax.set_axis_off()
+  fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
 
 def plot_kml_polygon(polygon, conv, name, pixels, bounds=False):
-    fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
-                             urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
-                             pixels=pixels)
-    for bdy in polygon.boundary:
-        ax.plot(bdy.xy[0],bdy.xy[1],'k-',linewidth=4,label='Building contour')
-    ax.set_axis_off()
-    fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
+  """Creates polygon layer for .kmz file"""
+  fig, ax = gearth_fig(llcrnrlon=conv[0].min(), llcrnrlat=conv[1].min(),
+                           urcrnrlon=conv[0].max(), urcrnrlat=conv[1].max(),
+                           pixels=pixels)
+  for bdy in polygon.boundary:
+      ax.plot(bdy.xy[0],bdy.xy[1],'k-',linewidth=4,label='Building contour')
+  ax.set_axis_off()
+  fig.savefig(name+'.png', transparent=True, format='png', bbox_inches = 'tight', pad_inches = 0)
     
 def make_kml(conv, figs, colorbar=None, **kw):
-    """TODO: LatLon bbox, list of figs, optional colorbar figure,
-    and several simplekml kw..."""
-    
+    """Composes kml layers into .kmz file"""
     llcrnrlon, llcrnrlat = conv[0].min(), conv[1].min()
     urcrnrlon, urcrnrlat = conv[0].max(), conv[1].max()
     kml = Kml()
@@ -233,10 +237,8 @@ def gearth_fig(llcrnrlon, llcrnrlat, urcrnrlon, urcrnrlat, pixels=1024, hide_plo
     ax.set_ylim(llcrnrlat, urcrnrlat)
     return fig, ax
   
-  
 #------------------------------------------#
 """Print to csv functions"""
-
 # Save as .csv file
 def save_to_csv(ds, single, conv, pxSize, resolution, name):
     ds_arr = ds.shape

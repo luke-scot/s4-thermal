@@ -1,16 +1,19 @@
-import numpy as np
-import glob
 import re
 import cv2
+import glob
 import imageio
-#import rasterio as ro
-import matplotlib.pyplot as plt
-from datetime import datetime
+import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from pyproj import Proj
+from datetime import datetime
 from skimage.measure import block_reduce
 
+"""This file provides helper functions for image imports and utilities for converting their formats"""
+
 #-----------------------------------------------#
+"""Flight data manipulation and association with images"""
+
 def img_info_merge(imgDir, pathFile, utcDiff, pathColumns, imageType=False, corr=True):
     """Function takes image directory and a flight path .csv and merges information for each
     image according to the file name of the image which denotes a timestamp
@@ -83,7 +86,7 @@ def reproject_coords(df, utmZone, hemisphere='north', inverse=False,
     df - Dataframe with new column for coordinates
     """
     # Convert coordinates to UTM
-    myProj = Proj('+proj=utm +zone='+utmZone+', +'+hemisphere+' +ellps=WGS84 +datum=WGS84 +units=m +no_defs')
+    myProj = Proj(proj='utm', zone=utmZone, ellps='WGS84', preserve_units=False)
     if inverse: df[orig[0]], df[orig[1]] = myProj(df[local[0]].values, df[local[1]].values, inverse=True)
     else: df[local[0]], df[local[1]] = myProj(df[orig[0]].values, df[orig[1]].values)
     return df, myProj
@@ -115,26 +118,27 @@ def correct_coords(df, distFilt=False, altitude='altitude(m)', yaw='yaw(deg)',
     return df[abs(np.hypot(dist,dist2)) < distFilt] if distFilt else df
 
   #-------------------------------------------------------#
+"""Image import functions"""
 
-"""Import functions"""
 def img_to_arr(filepath, xq=False, yq=False):
-    if '.npy' in filepath: 
-        arr = np.load(filepath)
-        if xq and yq: arr = arr[yq:arr.shape[0]-yq,xq:arr.shape[1]-xq]
-    else:
-        img = imageio.imread(filepath)
-        #img = ro.open(filepath)
-        read = img.read()[:, yq:img.shape[0]-yq,xq:img.shape[1]-xq] if xq and yq else img.read()
-        arr = np.dstack((read[0],read[1],read[2]))/255  
-    return arr
+  """Function converts an image file (.npy, .jpg, .png) to a usable array"""
+  if '.npy' in filepath: 
+      arr = np.load(filepath)
+      if xq and yq: arr = arr[yq:arr.shape[0]-yq,xq:arr.shape[1]-xq]
+  else:
+      img = imageio.imread(filepath)
+      #img = ro.open(filepath)
+      read = img[:, yq:img.shape[0]-yq,xq:img.shape[1]-xq] if xq and yq else img
+      arr = np.dstack((read[0],read[1],read[2]))/255  
+  return arr
   
-# Function downsamples an image input as an array
 def downsample_arr(arr, pxSize, resolution, sampleType=np.mean):
-    ds = int(np.floor(resolution/pxSize))
-    if len(arr.shape) == 3:       
-        return np.dstack(([block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds), i], (ds, ds), sampleType, cval = arr.mean()) for i in range(arr.shape[2])]))
-    else: 
-        return block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds)], (ds, ds), sampleType, cval = arr.mean())
+  """Function downsamples an image input as an array"""
+  ds = int(np.floor(resolution/pxSize))
+  if len(arr.shape) == 3:       
+      return np.dstack(([block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds), i], (ds, ds), sampleType, cval = arr.mean()) for i in range(arr.shape[2])]))
+  else: 
+      return block_reduce(arr[:-(arr.shape[0] % ds),:-(arr.shape[1] % ds)], (ds, ds), sampleType, cval = arr.mean())
       
 def use_centre(useCentre, df, pxSize, path='imgPath'):
     """Fetch relative coordinates for only using centre of images if this is specified in variables.
@@ -154,3 +158,28 @@ def use_centre(useCentre, df, pxSize, path='imgPath'):
     if useCentre: xq, yq = int(np.floor(len(xCoords)/4)), int(np.floor(len(yCoords)/4))
     else: xq, yq = False, False
     return xq, yq, xCoords, yCoords
+  
+def get_bound_temps(df, xCoords, yCoords, xq, yq, skip=1, imageType=False, coords = ['yc','xc'], totmin=-10, totmax=40):
+    """Function loops over images to get boundary temperatures of whole image array
+    (based off xy merge - this could be modified)
+    Input:
+    df - dataframe with flight information
+    xq, yq - image coordinate delimiters
+    skip - Use every nth image
+    imageType - True if RGB image, False if numpy array type (converted thermal images)
+    coords - name of coordinate columns to use from df
+    method - interpolation method (nearest, linear, cubic)
+    
+    Output:
+    xygrid - array of data values for each point on xy grid
+    extent - Boundary coordinates for xy grid
+    """
+    xmCoords, ymCoords = np.meshgrid(xCoords[xq:3*xq],yCoords[yq:3*yq]) if xq is not False else np.meshgrid(xCoords,yCoords)
+    xmcr, ymcr = xmCoords.reshape(-1,1), ymCoords.reshape(-1,1)
+
+    alltot = [0,0,0,0,0] if imageType else [0,0,0]
+    for index, row in tqdm(df[::skip].iterrows(), desc='Images processed'):
+        imgst = hf.img_to_arr(row.imgPath, xq, yq)
+        total = np.concatenate((xmcr+row[coords[0]], ymcr+row[coords[1]], imgst.reshape(-1,1) if len(imgst.shape) == 2 else [imgst[:,:,i].reshape(-1,1) for i in range(len(imgst.shape))]),axis=-1)
+        alltot = np.vstack((alltot,total))
+    return int(np.floor(alltot[1:,2].min())), int(np.ceil(alltot[1:,2].max()))
